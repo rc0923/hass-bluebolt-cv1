@@ -27,6 +27,7 @@ class BlueBoltAPI:
             "volts_out": 0.0,
             "watts": 0.0,
             "current": 0.0,
+            "battery": 0.0,
         }
         self.last_connection_attempt = None
         self.connection_retry_interval = 10
@@ -210,7 +211,7 @@ class BlueBoltAPI:
                     if response:
                         # For ?POWER, accept any response with power-related keys
                         if command == "?POWER" and any(
-                            key in response for key in ["VOLTS", "WATTS", "CURRENT"]
+                            key in response for key in ["VOLTS", "WATTS", "CURRENT", "BATTERY"]
                         ):
                             _LOGGER.debug(
                                 f"Got valid power data (may not be from this exact command)"
@@ -262,7 +263,7 @@ class BlueBoltAPI:
                 key, value = line.split("=", 1)
                 key = key.strip().lstrip("$").lower()
                 try:
-                    if key in ["volts_in", "volts_out", "watts", "current"]:
+                    if key in ["volts_in", "volts_out", "watts", "current", "battery"]:
                         data[key] = float(value.strip())
                 except ValueError:
                     pass
