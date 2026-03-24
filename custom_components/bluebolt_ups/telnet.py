@@ -188,6 +188,9 @@ class BlueBoltAPI:
                                 elif command == "?OUTLETSTAT" and "BANK4" in line:
                                     expected_complete = True
                                     break
+                                elif command == "?BATTERYSTAT" and "BATTERY" in line:
+                                    expected_complete = True
+                                    break
                                 elif command.startswith("!SWITCH") and "BANK" in line:
                                     expected_complete = True
                                     break
@@ -221,6 +224,11 @@ class BlueBoltAPI:
                         elif command == "?OUTLETSTAT" and "BANK" in response:
                             _LOGGER.debug(
                                 f"Got valid outlet data (may not be from this exact command)"
+                            )
+                            return response
+                        # For ?BATTERYSTAT, accept any response with BATTERY data
+                        elif command == "?BATTERYSTAT" and "BATTERY" in response:
+                            _LOGGER.debug(f"Got valid battery data (may not be from this exact command)"
                             )
                             return response
                         # For switch commands, accept if we see BANK in response
@@ -267,11 +275,35 @@ class BlueBoltAPI:
                         data[key] = float(value.strip())
                 except ValueError:
                     pass
+        battery_data = await self.get_battery_status()
+        if battery_data:
+            data.update(battery_data)
 
         if data:
             self.last_power_data.update(data)
         return self.last_power_data.copy()
 
+    async def get_battery_status(self):
+        ""Get battery status""
+        data = {}
+        response = await self.send_command("?BATTERYSTAT")
+
+        if not response:
+            _LOGGER.debug("No battery status response")
+            return data
+        
+        for line in response.splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip().lstrip("$").lower()
+                try:
+                    if key == "battery":
+                        data["battery"] = float(value.strip())
+                        _LOGGER.debug(f"Battery level: {data['battery']}%")
+                except ValueError:
+                    pass
+        return data
+    
     async def get_outlet_status(self):
         """Get outlet status."""
         data = {}
