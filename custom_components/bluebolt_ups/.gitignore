@@ -1,0 +1,13 @@
+# Create .gitignore
+@"
+__pycache__/
+*.py[cod]
+*`$py.class
+*.pyc
+*.pyo
+.Python
+.DS_Store
+*.swp
+*.swo
+*~
+"@ | Out-File -FilePath .gitignore -Encoding UTF8
