@@ -1,7 +1,7 @@
 {
   "domain": "bluebolt_ups",
   "name": "BlueBolt UPS",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "documentation": "https://github.com/rc0923/hass-bluebolt-cv1",
   "issue_tracker": "https://github.com/rc0923/hass-bluebolt-cv1/issues",
   "requirements": [],
