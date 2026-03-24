@@ -284,7 +284,7 @@ class BlueBoltAPI:
         return self.last_power_data.copy()
 
     async def get_battery_status(self):
-        ""Get battery status""
+        """Get battery status using dedicated command."""
         data = {}
         response = await self.send_command("?BATTERYSTAT")
 
