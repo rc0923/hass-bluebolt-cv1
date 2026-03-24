@@ -228,7 +228,8 @@ class BlueBoltAPI:
                             return response
                         # For ?BATTERYSTAT, accept any response with BATTERY data
                         elif command == "?BATTERYSTAT" and "BATTERY" in response:
-                            _LOGGER.debug(f"Got valid battery data (may not be from this exact command)"
+                            _LOGGER.debug(
+                                f"Got valid battery data (may not be from this exact command)"
                             )
                             return response
                         # For switch commands, accept if we see BANK in response
@@ -376,6 +377,6 @@ class BlueBoltAPI:
             try:
                 self.polling_task.cancel()
                 await asyncio.wait_for(self.polling_task, timeout=1)
-            except asyncio.TimeoutError, asyncio.CancelledError:
+            except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
             self.polling_task = None
