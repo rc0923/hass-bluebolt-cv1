@@ -1,6 +1,7 @@
 """Data update coordinator for BlueBolt UPS."""
 
 from datetime import timedelta
+from datetime import datetime
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -27,10 +28,7 @@ class BlueBoltDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from the BlueBolt UPS."""
         try:
-            # Get outlet status
             outlet_status = await self.api.get_outlet_status()
-
-            # Get power data
             power_data = await self.api.get_power_status()
 
             if not isinstance(outlet_status, dict) or not isinstance(power_data, dict):
@@ -44,6 +42,7 @@ class BlueBoltDataUpdateCoordinator(DataUpdateCoordinator):
             return {
                 "outlet_status": outlet_status,
                 "power_data": power_data,
+                "last_update": datetime.now().isoformat(),
             }
         except Exception as err:
             _LOGGER.error("Error updating UPS data: %s", err)

@@ -29,9 +29,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to connect to BlueBolt UPS at %s", entry.data["host"])
         return False
 
-    # Start polling for updates
-    await api.start_polling()
-
     # Create coordinator
     coordinator = BlueBoltDataUpdateCoordinator(hass, api)
 
@@ -59,7 +56,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if entry_data:
             api = entry_data["api"]
             _LOGGER.info("Closing connection to BlueBolt UPS at %s", entry.data["host"])
-            await api.stop_polling()
             await api.disconnect()
 
     return unload_ok

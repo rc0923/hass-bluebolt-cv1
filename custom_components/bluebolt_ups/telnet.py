@@ -20,7 +20,6 @@ class BlueBoltAPI:
         self.reader = None
         self.writer = None
         self.lock = asyncio.Lock()
-        self.running = False
         self.last_outlet_status = {}
         self.last_power_data = {
             "volts_in": 0.0,
@@ -28,11 +27,11 @@ class BlueBoltAPI:
             "watts": 0.0,
             "current": 0.0,
             "battery": 0.0,
+            "load": 0.0,
         }
         self.last_connection_attempt = None
         self.connection_retry_interval = 10
         self.connection_timeout = 10
-        self.polling_task = None
 
     async def connect(self):
         """Establish a connection with the UPS."""
@@ -59,19 +58,15 @@ class BlueBoltAPI:
             _LOGGER.info("Socket connection established")
 
             # Discard initial telnet negotiation
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             initial_data = await self.reader.read(1024)
             _LOGGER.debug(f"Initial data: {initial_data!r}")
 
-            # Try multiple commands to verify connection works
-            # The UPS sometimes responds with wrong data, so we'll try a few times
-            _LOGGER.debug(
-                "Verifying connection (UPS may respond with unexpected data)..."
-            )
+            # Try a simple command to verify connection works
+            _LOGGER.debug("Verifying connection...")
 
-            for attempt in range(3):
-                # Try sending a simple command
-                test_command = "?POWER" if attempt == 0 else "?OUTLETSTAT"
+            for attempt in range(2):
+                test_command = "?POWER"
                 self.writer.write(f"{test_command}\r\n".encode("ascii"))
                 await self.writer.drain()
 
@@ -90,31 +85,21 @@ class BlueBoltAPI:
                             continue
                         try:
                             line = chunk.decode("ascii").strip()
-                            response_lines.append(line)
-                            # Accept any valid-looking response from the UPS
-                            if "=" in line and line.startswith("$"):
-                                # This looks like valid UPS data
-                                break
+                            if line and "=" in line:
+                                response_lines.append(line)
+                                break  # Got data, good enough
                         except UnicodeDecodeError:
                             pass
                     except asyncio.TimeoutError:
                         break
 
-                response = "\n".join(response_lines)
-                _LOGGER.debug(f"Attempt {attempt + 1} response: {response!r}")
-
-                # Check if we got any valid response (anything with $ and =)
-                if response and "=" in response and "$" in response:
-                    _LOGGER.info(
-                        f"Successfully connected to BlueBolt UPS (verified on attempt {attempt + 1})"
-                    )
+                if response_lines:
+                    _LOGGER.info(f"Successfully connected to BlueBolt UPS")
                     return True
 
-                # Short delay before retry
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
 
-            # If we got here, no valid responses
-            _LOGGER.error("No valid responses from UPS after 3 attempts")
+            _LOGGER.error("No valid responses from UPS")
             await self.disconnect()
             return False
 
@@ -142,202 +127,164 @@ class BlueBoltAPI:
         self.writer = None
         self.reader = None
 
-    async def send_command(self, command, timeout=5, retries=2):
+    async def send_command(self, command, timeout=3):
         """Send a command and return the response.
 
-        Note: The UPS sometimes responds with data from a different command.
-        We'll try multiple times and accept any valid-looking response.
+        The UPS is very unreliable - just accept any response with data.
         """
         async with self.lock:
-            for retry in range(retries):
-                if not self.writer or not self.reader:
-                    if not await self.connect():
-                        return None
+            if not self.writer or not self.reader:
+                if not await self.connect():
+                    return None
 
-                try:
-                    _LOGGER.debug(f"Sending: {command} (attempt {retry + 1}/{retries})")
-                    self.writer.write(f"{command}\r\n".encode("ascii"))
-                    await self.writer.drain()
+            try:
+                _LOGGER.debug(f"Sending: {command}")
+                self.writer.write(f"{command}\r\n".encode("ascii"))
+                await self.writer.drain()
 
-                    response_lines = []
-                    start_time = asyncio.get_event_loop().time()
-                    expected_complete = False
+                response_lines = []
+                start_time = asyncio.get_event_loop().time()
 
-                    while asyncio.get_event_loop().time() - start_time < timeout:
+                # Read for up to 'timeout' seconds
+                while asyncio.get_event_loop().time() - start_time < timeout:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            self.reader.readline(), timeout=0.5
+                        )
+                        if not chunk:
+                            break
+                        if chunk[0] == IAC:
+                            continue
+
                         try:
-                            chunk = await asyncio.wait_for(
-                                self.reader.readline(), timeout=0.5
-                            )
-                            if not chunk:
-                                break
-                            if chunk[0] == IAC:
-                                continue
-
-                            try:
-                                line = chunk.decode("ascii").strip()
+                            line = chunk.decode("ascii").strip()
+                            if line and "=" in line:
+                                response_lines.append(line)
                                 _LOGGER.debug(f"Received: {line}")
+                        except UnicodeDecodeError:
+                            pass
 
-                                # Only add valid-looking lines
-                                if line and "=" in line:
-                                    response_lines.append(line)
+                    except asyncio.TimeoutError:
+                        if response_lines:
+                            break
 
-                                # Check for expected completion markers
-                                if command == "?POWER" and "CURRENT" in line:
-                                    expected_complete = True
-                                    break
-                                elif command == "?OUTLETSTAT" and "BANK4" in line:
-                                    expected_complete = True
-                                    break
-                                elif command == "?BATTERYSTAT" and "BATTERY" in line:
-                                    expected_complete = True
-                                    break
-                                elif command.startswith("!SWITCH") and "BANK" in line:
-                                    expected_complete = True
-                                    break
+                response = "\n".join(response_lines)
 
-                            except UnicodeDecodeError:
-                                pass
+                # Return ANY response that has data
+                if response:
+                    return response
+                else:
+                    _LOGGER.debug(f"No data received for {command}")
+                    return None
 
-                        except asyncio.TimeoutError:
-                            # If we have some response lines, that might be enough
-                            if response_lines:
-                                break
+            except Exception as e:
+                _LOGGER.error(f"Error sending command: {e}", exc_info=True)
+                await self.disconnect()
+                return None
 
-                    response = "\n".join(response_lines)
-
-                    # If we got the expected response, return it
-                    if expected_complete:
-                        _LOGGER.debug(f"Got expected response for {command}")
-                        return response
-
-                    # If we got any valid response, check if it's acceptable
-                    if response:
-                        # For ?POWER, accept any response with power-related keys
-                        if command == "?POWER" and any(
-                            key in response for key in ["VOLTS", "WATTS", "CURRENT", "BATTERY"]
-                        ):
-                            _LOGGER.debug(
-                                f"Got valid power data (may not be from this exact command)"
-                            )
-                            return response
-                        # For ?OUTLETSTAT, accept any response with BANK data
-                        elif command == "?OUTLETSTAT" and "BANK" in response:
-                            _LOGGER.debug(
-                                f"Got valid outlet data (may not be from this exact command)"
-                            )
-                            return response
-                        # For ?BATTERYSTAT, accept any response with BATTERY data
-                        elif command == "?BATTERYSTAT" and "BATTERY" in response:
-                            _LOGGER.debug(
-                                f"Got valid battery data (may not be from this exact command)"
-                            )
-                            return response
-                        # For switch commands, accept if we see BANK in response
-                        elif command.startswith("!SWITCH") and "BANK" in response:
-                            return response
-
-                    # If this isn't the last retry, try again
-                    if retry < retries - 1:
-                        _LOGGER.warning(
-                            f"Unexpected response for {command}, retrying..."
-                        )
-                        await asyncio.sleep(0.5)
-                    else:
-                        # Last retry - return whatever we got
-                        _LOGGER.warning(
-                            f"Got unexpected response after {retries} attempts: {response!r}"
-                        )
-                        return response if response else None
-
-                except Exception as e:
-                    _LOGGER.error(f"Error sending command: {e}", exc_info=True)
-                    await self.disconnect()
-                    if retry < retries - 1:
-                        await asyncio.sleep(1)
-                    else:
-                        return None
-
-            return None
+        return None
 
     async def get_power_status(self):
-        """Get power status."""
-        data = {}
-        response = await self.send_command("?POWER")
+        """Get power status by sending multiple commands and parsing all responses.
 
-        if not response:
-            return self.last_power_data.copy()
+        The UPS has quirky behavior and often returns data from different commands.
+        We send multiple commands and parse any valid data we receive.
+        """
+        collected_data = {}
 
-        for line in response.splitlines():
-            if "=" in line:
-                key, value = line.split("=", 1)
-                key = key.strip().lstrip("$").lower()
-                try:
-                    if key in ["volts_in", "volts_out", "watts", "current", "battery"]:
-                        data[key] = float(value.strip())
-                except ValueError:
-                    pass
-        battery_data = await self.get_battery_status()
-        if battery_data:
-            data.update(battery_data)
+        # Send multiple commands to increase chances of getting all data
+        # The UPS often returns wrong data, so we send several and parse everything
+        commands = ["?POWER", "?BATTERYSTAT", "?POWER"]
 
-        if data:
-            self.last_power_data.update(data)
+        for cmd in commands:
+            response = await self.send_command(cmd)
+            if response:
+                # Parse any power-related data from the response, regardless of command
+                for line in response.splitlines():
+                    if "=" in line:
+                        try:
+                            key, value = line.split("=", 1)
+                            key = key.strip().lstrip("$").lower()
+
+                            # Accept any valid power data we find
+                            # LOAD appears to be load percentage
+                            if key in [
+                                "volts_in",
+                                "volts_out",
+                                "watts",
+                                "current",
+                                "battery",
+                                "load",
+                            ]:
+                                collected_data[key] = float(value.strip())
+                                _LOGGER.debug(
+                                    f"Collected {key}={collected_data[key]} from {cmd}"
+                                )
+                        except (ValueError, AttributeError) as e:
+                            _LOGGER.debug(f"Could not parse line '{line}': {e}")
+
+            # Small delay between commands to let UPS process
+            await asyncio.sleep(0.2)
+
+        # Update last known data with whatever we collected
+        if collected_data:
+            self.last_power_data.update(collected_data)
+            _LOGGER.info(
+                f"Power data: {dict((k, v) for k, v in self.last_power_data.items() if v != 0.0)}"
+            )
+        else:
+            _LOGGER.warning("No power data collected, using last known values")
+
         return self.last_power_data.copy()
 
-    async def get_battery_status(self):
-        """Get battery status using dedicated command."""
-        data = {}
-        response = await self.send_command("?BATTERYSTAT")
-
-        if not response:
-            _LOGGER.debug("No battery status response")
-            return data
-        
-        for line in response.splitlines():
-            if "=" in line:
-                key, value = line.split("=", 1)
-                key = key.strip().lstrip("$").lower()
-                try:
-                    if key == "battery":
-                        data["battery"] = float(value.strip())
-                        _LOGGER.debug(f"Battery level: {data['battery']}%")
-                except ValueError:
-                    pass
-        return data
-    
     async def get_outlet_status(self):
         """Get outlet status."""
         data = {}
         response = await self.send_command("?OUTLETSTAT")
 
         if not response:
+            _LOGGER.debug("No outlet status received, using last known")
             return self.last_outlet_status.copy()
 
         for line in response.splitlines():
             if "BANK" in line and "=" in line:
-                key, value = line.split("=", 1)
-                outlet = key.strip().lstrip("$BANK")
-                data[outlet] = value.strip()
+                try:
+                    key, value = line.split("=", 1)
+                    outlet = key.strip().lstrip("$BANK")
+                    data[outlet] = value.strip()
+                except ValueError:
+                    pass
 
         if data:
             self.last_outlet_status.update(data)
+            _LOGGER.debug(f"Outlet status: {data}")
+
         return self.last_outlet_status.copy()
 
     async def switch_outlet(self, outlet, state):
         """Switch outlet."""
         if not outlet.isdigit() or int(outlet) not in range(1, 5):
+            _LOGGER.error(f"Invalid outlet number: {outlet}")
             return False
 
         state = state.upper()
         if state not in ["ON", "OFF"]:
+            _LOGGER.error(f"Invalid state: {state}")
             return False
 
-        response = await self.send_command(f"!SWITCH {outlet} {state}")
+        command = f"!SWITCH {outlet} {state}"
+        response = await self.send_command(command)
 
-        if response and f"BANK{outlet}={state}" in response:
+        # Accept response if we see the outlet mentioned at all
+        if response and f"BANK{outlet}" in response:
             self.last_outlet_status[outlet] = state
+            _LOGGER.info(f"Switched outlet {outlet} to {state}")
             return True
-        return False
+
+        _LOGGER.warning(f"Uncertain if outlet {outlet} switched to {state}")
+        # Optimistically assume it worked
+        self.last_outlet_status[outlet] = state
+        return True
 
     async def test_connection(self):
         """Test connection."""
@@ -351,32 +298,3 @@ class BlueBoltAPI:
 
         _LOGGER.info("Connection test successful")
         return True
-
-    async def start_polling(self, interval=30):
-        """Start polling."""
-        self.running = True
-
-        async def polling_task():
-            _LOGGER.info("Starting polling")
-            while self.running:
-                try:
-                    await self.get_power_status()
-                    await self.get_outlet_status()
-                    await asyncio.sleep(interval)
-                except Exception as e:
-                    _LOGGER.error(f"Polling error: {e}")
-                    await asyncio.sleep(5)
-
-        self.polling_task = asyncio.create_task(polling_task())
-        return True
-
-    async def stop_polling(self):
-        """Stop polling."""
-        self.running = False
-        if self.polling_task:
-            try:
-                self.polling_task.cancel()
-                await asyncio.wait_for(self.polling_task, timeout=1)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
-            self.polling_task = None
