@@ -35,7 +35,6 @@ class UPSPowerSensor(CoordinatorEntity, SensorEntity):
     """UPS Power Sensors."""
 
     _attr_should_poll = False
-    _attr_force_update = True
 
     def __init__(self, coordinator, api, metric, name, unit, device_class):
         """Initialize the sensor."""

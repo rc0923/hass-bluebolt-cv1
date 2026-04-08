@@ -25,8 +25,7 @@ class UPSOutletSwitch(CoordinatorEntity, SwitchEntity):
     """UPS Outlet Switch."""
 
     _attr_should_poll = False
-    _attr_force_update = True
-
+    
     def __init__(self, coordinator, api, outlet):
         """Initialize the switch."""
         super().__init__(coordinator)
