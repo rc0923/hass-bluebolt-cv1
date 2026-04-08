@@ -2,7 +2,7 @@
 
 A custom Home Assistant integration for BlueBolt UPS systems that provides real-time monitoring and control of your UPS via Telnet.
 This integration was only tested with a BlueBolt-CV1 network card in a FURMAN F-1500UPS. It uses Telnet for communication and I am not sure if the commands it sends will work on a different UPS but feel free to test it out and let me know. May also work with a CV-2 card as according to documentation that card can also use Telnet communication.
-WARNING: I AM NOT A DEVELOPER. I code sometimes as a hobby and not very well. This project was 99.9 percent vibe coded. I created it because there is no other integration.
+WARNING: I AM NOT A DEVELOPER. I code sometimes as a hobby and not very well. This project was 99.8 percent vibe coded. I created it because there is no other integration.
 
 ## Features
 
