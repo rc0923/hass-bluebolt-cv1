@@ -1,11 +1,13 @@
 {
   "domain": "bluebolt_ups",
   "name": "BlueBolt UPS",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "documentation": "https://github.com/rc0923/hass-bluebolt-cv1",
   "issue_tracker": "https://github.com/rc0923/hass-bluebolt-cv1/issues",
   "requirements": [],
-  "codeowners": ["@rc0923"],
+  "codeowners": [
+    "@rc0923"
+  ],
   "iot_class": "local_polling",
   "config_flow": true
 }
