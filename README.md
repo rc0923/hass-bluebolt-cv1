@@ -1,8 +1,7 @@
 # BlueBolt CV1 UPS Home Assistant Integration
 
 A custom Home Assistant integration for BlueBolt UPS systems that provides real-time monitoring and control of your UPS via Telnet.
-This integration was only tested with a BlueBolt-CV1 network card in a FURMAN F-1500UPS. It uses Telnet for communication and I am not sure if the commands it sends will work on a different UPS but feel free to test it out and let me know. May also work with a CV-2 card as according to documentation that card can also use Telnet communication.
-WARNING: I AM NOT A DEVELOPER. I code sometimes as a hobby and not very well. This project was 99.8 percent vibe coded. I created it because there is no other integration.
+This integration was only tested with a BlueBolt-CV1 network card in a FURMAN F-1500UPS. It uses Telnet for communication but as of right now it does not detect the UPS model. WARNING: I AM NOT A DEVELOPER. I code sometimes as a hobby and not very well. This project was 99.8 percent vibe coded. I created it because there is no other integration for the CV-1 card.
 
 ## Features
 
@@ -14,7 +13,7 @@ WARNING: I AM NOT A DEVELOPER. I code sometimes as a hobby and not very well. Th
   - Battery level (%)
 
 - **Outlet Control**
-  - Control up to 4 outlets (on/off)
+  - Control 4 outlets (banks) (on/off)
   - Real-time outlet status
 
 - **Communication**
@@ -62,16 +61,16 @@ The integration will automatically discover and create sensors and switches for 
 
 On my UPS these are actually banks of (2) outlets. May rename "outlet" to "bank" in a future update
 
-- `switch.ups_outlet_1` - Control outlet 1
-- `switch.ups_outlet_2` - Control outlet 2
-- `switch.ups_outlet_3` - Control outlet 3
-- `switch.ups_outlet_4` - Control outlet 4
+- `switch.ups_outlet_1` - Control bank 1
+- `switch.ups_outlet_2` - Control bank 2
+- `switch.ups_outlet_3` - Control bank 3
+- `switch.ups_outlet_4` - Control bank 4
 
 ## Known Limitations
 
 - There is some wacky Telnet behavior and sometimes the UPS responds with data from a different command than requested. This happens even on manual Telnet sessions.
 - The integration includes automatic retry logic in an attempt to handle
-- You will see warnings in the logs about "unexpected responses"
+- You may see warnings in the logs about "unexpected responses"
 
 ## Troubleshooting
 
@@ -84,13 +83,6 @@ On my UPS these are actually banks of (2) outlets. May rename "outlet" to "bank"
 ```bash
    telnet <UPS_IP> 23
 ```
-
-## Development
-
-This integration uses:
-- Python asyncio for asynchronous communication
-- Home Assistant's DataUpdateCoordinator for efficient polling
-- Config flow for easy setup
 
 ### Communication Protocol
 
